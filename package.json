@@ -1,0 +1,17 @@
+{
+  "name": "plurall-automation",
+  "version": "1.0.0",
+  "description": "Automação para resolver questões na plataforma Plurall",
+  "main": "plurall-automation.js",
+  "scripts": {
+    "start": "node plurall-automation.js",
+    "install-browser": "npx playwright install chromium"
+  },
+  "keywords": ["automation", "plurall", "playwright"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "playwright": "^1.40.0",
+    "dotenv": "^16.3.1"
+  }
+}
