@@ -1,9 +1,17 @@
-require('dotenv').config();
 const { chromium } = require('playwright');
+const readline = require('readline');
 
 const PLURALL_LOGIN_URL = 'https://login.plurall.net/';
-const LIVRO_NOME = process.env.LIVRO_NOME || '';
 const ALTERNATIVAS = ['A', 'B', 'C', 'D', 'E'];
+
+const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+});
+
+function question(query) {
+    return new Promise(resolve => rl.question(query, resolve));
+}
 
 async function fazerLogin(page, usuario, senha) {
     console.log(`[${usuario}] Acessando página de login do Plurall...`);
@@ -40,16 +48,40 @@ async function navegarParaAtividades(page, usuario) {
     console.log(`[${usuario}] Navegação concluída!`);
 }
 
-async function selecionarLivro(page, usuario, nomeLivro) {
-    if (!nomeLivro) {
-        console.log(`[${usuario}] Nenhum livro especificado. Selecionando o primeiro disponível...`);
-        await page.click('div[class*="livro"], a[class*="book"], div[class*="card"]', { timeout: 15000 });
-    } else {
-        console.log(`[${usuario}] Selecionando livro: ${nomeLivro}...`);
-        await page.click(`text=${nomeLivro}`, { timeout: 15000 });
+async function listarESelecionarLivro(page, usuario) {
+    console.log(`[${usuario}] Buscando livros disponíveis...`);
+    await page.waitForSelector('div[class*="livro"], a[class*="book"], div[class*="card"]', { timeout: 15000 });
+    
+    const livros = await page.evaluate(() => {
+        const elementos = document.querySelectorAll('div[class*="livro"], a[class*="book"], div[class*="card"]');
+        return Array.from(elementos).map((el, index) => ({
+            index: index + 1,
+            titulo: el.innerText.split('\n')[0].trim() || `Livro ${index + 1}`
+        })).filter(l => l.titulo.length > 0);
+    });
+
+    if (livros.length === 0) {
+        console.log(`[${usuario}] Nenhum livro encontrado.`);
+        return null;
     }
+
+    console.log(`\n📚 Livros encontrados para ${usuario}:`);
+    livros.forEach(l => console.log(`${l.index}. ${l.titulo}`));
+
+    const escolha = await question(`\nDigite o número do livro que deseja selecionar para ${usuario}: `);
+    const livroSelecionado = livros.find(l => l.index === parseInt(escolha));
+
+    if (livroSelecionado) {
+        console.log(`[${usuario}] Selecionando: ${livroSelecionado.titulo}...`);
+        await page.click(`text=${livroSelecionado.titulo}`, { timeout: 15000 });
+    } else {
+        console.log(`[${usuario}] Opção inválida. Selecionando o primeiro disponível...`);
+        await page.click('div[class*="livro"], a[class*="book"], div[class*="card"]', { timeout: 15000 });
+    }
+    
     await page.waitForLoadState('networkidle');
     console.log(`[${usuario}] Livro selecionado!`);
+    return livroSelecionado ? livroSelecionado.titulo : 'Primeiro Livro';
 }
 
 async function responderQuestao(page, usuario, alternativa) {
@@ -138,10 +170,10 @@ async function resolverQuestoesAlternadas(page1, page2, numeroQuestoes = 10) {
 async function main() {
     console.log('🤖 Iniciando automação Plurall...\n');
 
-    if (!process.env.CONTA1_USUARIO || !process.env.CONTA1_SENHA || !process.env.CONTA2_USUARIO || !process.env.CONTA2_SENHA) {
-        console.error('❌ Erro: Credenciais não configuradas corretamente no arquivo .env');
-        process.exit(1);
-    }
+    const user1 = await question('Digite o usuário da Conta 1: ');
+    const pass1 = await question('Digite a senha da Conta 1: ');
+    const user2 = await question('Digite o usuário da Conta 2: ');
+    const pass2 = await question('Digite a senha da Conta 2: ');
 
     const browser = await chromium.launch({
         headless: true,
@@ -154,10 +186,10 @@ async function main() {
         const page1 = await context1.newPage();
         const page2 = await context2.newPage();
 
-        console.log('📝 Fazendo login nas duas contas...\n');
+        console.log('\n📝 Fazendo login nas duas contas...\n');
         await Promise.all([
-            fazerLogin(page1, process.env.CONTA1_USUARIO, process.env.CONTA1_SENHA),
-            fazerLogin(page2, process.env.CONTA2_USUARIO, process.env.CONTA2_SENHA)
+            fazerLogin(page1, user1, pass1),
+            fazerLogin(page2, user2, pass2)
         ]);
 
         console.log('\n🔍 Navegando para atividades...\n');
@@ -166,11 +198,12 @@ async function main() {
             navegarParaAtividades(page2, 'Conta 2')
         ]);
 
-        console.log('\n📚 Selecionando livro...\n');
-        await Promise.all([
-            selecionarLivro(page1, 'Conta 1', LIVRO_NOME),
-            selecionarLivro(page2, 'Conta 2', LIVRO_NOME)
-        ]);
+        console.log('\n📚 Selecionando livros...\n');
+        // Selecionar livros sequencialmente para não bugar o input do terminal
+        const livro1 = await listarESelecionarLivro(page1, 'Conta 1');
+        const livro2 = await listarESelecionarLivro(page2, 'Conta 2');
+
+        console.log(`\nLivros selecionados: ${livro1} e ${livro2}`);
 
         await page1.waitForTimeout(3000);
         await resolverQuestoesAlternadas(page1, page2, 10);
@@ -179,7 +212,12 @@ async function main() {
         console.error('\n❌ Erro durante a execução:', error.message);
     } finally {
         await browser.close();
+        rl.close();
     }
 }
 
-main().catch(console.error);
+main().catch(err => {
+    console.error(err);
+    rl.close();
+    process.exit(1);
+});
