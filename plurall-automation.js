@@ -50,6 +50,21 @@ async function navegarParaAtividades(page, idConta) {
         await page.click('text=Aula dada, aula estudada');
         
         await page.waitForLoadState('networkidle');
+
+        // Aplicar filtro de tarefas pendentes se solicitado
+        console.log(`[${idConta}] Ativando filtro de tarefas pendentes...`);
+        try {
+            const filterSelector = '#check-disciplines-filter';
+            await page.waitForSelector(filterSelector, { timeout: 5000 });
+            const isChecked = await page.getAttribute(filterSelector, 'aria-checked');
+            if (isChecked === 'false') {
+                await page.click(filterSelector);
+                console.log(`[${idConta}] Filtro 'Visualizar apenas tarefas para fazer' ativado.`);
+            }
+        } catch (e) {
+            console.log(`[${idConta}] Filtro de tarefas pendentes não encontrado ou já aplicado.`);
+        }
+
         console.log(`[${idConta}] Navegação concluída!`);
     } catch (err) {
         console.error(`[${idConta}] Erro na navegação: ${err.message}`);
@@ -62,7 +77,6 @@ async function listarLivros(page, idConta) {
         await page.waitForSelector('div[class*="livro"], a[class*="book"], div[class*="card"], .sc-kOHTFB', { timeout: 20000 });
         
         const livros = await page.evaluate(() => {
-            // Seletores comuns no Plurall para cards de livros
             const elementos = document.querySelectorAll('div[class*="livro"], a[class*="book"], div[class*="card"], .sc-kOHTFB');
             return Array.from(elementos).map((el, index) => {
                 const texto = el.innerText.trim().split('\n')[0];
@@ -90,6 +104,21 @@ async function selecionarLivroPorNome(page, idConta, nomeLivro) {
         console.log(`[${idConta}] Não foi possível clicar no livro pelo texto. Tentando clique genérico...`);
         await page.click('div[class*="livro"], a[class*="book"], div[class*="card"]', { timeout: 5000 }).catch(() => {});
         return false;
+    }
+}
+
+async function filtrarTarefasPendentes(page, idConta) {
+    console.log(`[${idConta}] Filtrando apenas tarefas pendentes...`);
+    try {
+        // Seletor baseado no HTML fornecido: <div id="check-disciplines-filter" ...>
+        const checkbox = await page.locator('#check-disciplines-filter');
+        const isChecked = await checkbox.getAttribute('aria-checked');
+        if (isChecked === 'false') {
+            await checkbox.click();
+        }
+        await page.waitForTimeout(2000);
+    } catch (err) {
+        console.log(`[${idConta}] Erro ao aplicar filtro: ${err.message}`);
     }
 }
 
@@ -126,7 +155,8 @@ async function responderQuestao(page, idConta, alternativa) {
 }
 
 async function verificarResposta(page) {
-    const correta = await page.locator('text=Correto, text=Parabéns, div[class*="correct"]').count() > 0;
+    // Melhoria na detecção de resposta correta baseada no HTML fornecido (.correct)
+    const correta = await page.locator('text=Correto, text=Parabéns, div[class*="correct"], .correct').count() > 0;
     return { correta };
 }
 
