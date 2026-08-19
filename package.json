@@ -5,11 +5,12 @@
   "main": "plurall-automation.js",
   "scripts": {
     "start": "node plurall-automation.js",
+    "test": "node test/config.test.js",
     "install-browser": "npx playwright install chromium"
   },
   "keywords": ["automation", "plurall", "playwright"],
-  "author": "",
-  "license": "MIT",
+  "author": "Arthur Forster",
+  "license": "UNLICENSED",
   "dependencies": {
     "playwright": "^1.40.0",
     "dotenv": "^16.3.1"

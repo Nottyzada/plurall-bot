@@ -1,16 +1,24 @@
+require('dotenv').config();
 const { chromium } = require('playwright');
 const readline = require('readline');
 
 const PLURALL_LOGIN_URL = 'https://login.plurall.net/';
 const ALTERNATIVAS = ['A', 'B', 'C', 'D', 'E'];
 
-const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
-});
+let rl;
+
+function getReadline() {
+    if (!rl) {
+        rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout
+        });
+    }
+    return rl;
+}
 
 function question(query) {
-    return new Promise(resolve => rl.question(query, resolve));
+    return new Promise(resolve => getReadline().question(query, resolve));
 }
 
 async function fazerLogin(page, usuario, senha, idConta) {
@@ -200,15 +208,35 @@ async function resolverQuestoesAlternadas(page1, page2, numQuestoes = 10) {
     }
 }
 
+async function obterConfiguracao() {
+    const configuracao = {
+        user1: process.env.CONTA1_USUARIO,
+        pass1: process.env.CONTA1_SENHA,
+        user2: process.env.CONTA2_USUARIO,
+        pass2: process.env.CONTA2_SENHA,
+        livroNome: process.env.LIVRO_NOME || '',
+        headless: process.env.HEADLESS !== 'false'
+    };
+
+    const possuiCredenciais = [configuracao.user1, configuracao.pass1, configuracao.user2, configuracao.pass2]
+        .every(valor => typeof valor === 'string' && valor.trim().length > 0);
+
+    if (!possuiCredenciais) {
+        configuracao.user1 = await question('Usuário Conta 1: ');
+        configuracao.pass1 = await question('Senha Conta 1: ');
+        configuracao.user2 = await question('Usuário Conta 2: ');
+        configuracao.pass2 = await question('Senha Conta 2: ');
+    }
+
+    return configuracao;
+}
+
 async function main() {
-    console.log('🤖 Plurall Bot - Iniciando...\n');
+    console.log('Plurall Bot - Iniciando...\n');
 
-    const user1 = await question('Usuário Conta 1: ');
-    const pass1 = await question('Senha Conta 1: ');
-    const user2 = await question('Usuário Conta 2: ');
-    const pass2 = await question('Senha Conta 2: ');
+    const { user1, pass1, user2, pass2, livroNome, headless } = await obterConfiguracao();
 
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromium.launch({ headless });
 
     try {
         const context1 = await browser.newContext();
@@ -239,8 +267,17 @@ async function main() {
         }
 
         livros.forEach(l => console.log(`${l.index}. ${l.titulo}`));
-        const index = await question('\nDigite o número do livro desejado: ');
-        const livroEscolhido = livros.find(l => l.index === parseInt(index));
+        let livroEscolhido;
+        if (livroNome.trim()) {
+            livroEscolhido = livros.find(l => l.titulo.toLowerCase().includes(livroNome.trim().toLowerCase()));
+            if (!livroEscolhido) {
+                console.error(`Livro não encontrado: ${livroNome}`);
+                return;
+            }
+        } else {
+            const index = await question('\nDigite o número do livro desejado: ');
+            livroEscolhido = livros.find(l => l.index === parseInt(index, 10));
+        }
 
         if (!livroEscolhido) {
             console.log('❌ Opção inválida.');
@@ -264,7 +301,20 @@ async function main() {
     }
 }
 
-main().catch(err => {
-    console.error(err);
-    rl.close();
-});
+if (require.main === module) {
+    main().catch(err => {
+        console.error(err);
+        if (rl) rl.close();
+        process.exitCode = 1;
+    });
+}
+
+module.exports = {
+    obterConfiguracao,
+    fazerLogin,
+    navegarParaAtividades,
+    listarLivros,
+    selecionarLivroPorNome,
+    filtrarTarefasPendentes,
+    verificarResposta
+};
